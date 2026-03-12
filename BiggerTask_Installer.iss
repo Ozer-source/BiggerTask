@@ -6,15 +6,15 @@
 ;
 ; Requirements:
 ; - Inno Setup installed (free from https://jrsoftware.org/isdl.php)
-; - BiggerTask.exe already compiled (in dist/ folder)
-; - IMPORTANT: dist folder must be in the SAME folder as this .iss file
+; - BiggerTask.exe in the dist/ folder
+; - dist folder must be in the SAME folder as this .iss file
 ;
 ; Usage:
 ; 1. Install Inno Setup
 ; 2. Make sure dist/ folder is in same directory as this .iss file
 ; 3. Open this file (.iss) with Inno Setup
 ; 4. Click "Compile" (Ctrl+F9)
-; 5. Output: Output/Installer.exe
+; 5. Output: Installer.exe (in same directory)
 ; ============================================================================
 
 [Setup]
@@ -37,7 +37,7 @@ WizardResizable=yes
 ShowLanguageDialog=no
 
 ; Output
-OutputDir=Output
+OutputDir=.
 OutputBaseFilename=Installer
 
 ; Compression

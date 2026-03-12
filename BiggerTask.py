@@ -137,7 +137,7 @@ class RecorderState:
 recorder = RecorderState()  # Initialize without callback, will be updated by GUI
 playback_speed = 1.0  # Playback speed multiplier
 is_looping = False  # Loop mode toggle
-is_playing = False  # Playback state - allows stopping playback with F8
+is_playing = False  # Playback state
 
 
 # ============================================================================
@@ -156,24 +156,35 @@ def create_mouse_listener():
     
     def on_move(x, y):
         """Called when mouse moves"""
-        event = asdict(MouseMoveEvent(x=x, y=y))
-        recorder.add_event(event)
+        try:
+            event = asdict(MouseMoveEvent(x=x, y=y))
+            recorder.add_event(event)
+        except Exception as e:
+            print(f"ERROR in mouse on_move: {e}")
+            import traceback
+            traceback.print_exc()
     
     def on_click(x, y, button, pressed):
         """Called when mouse button is pressed or released"""
-        button_name = "left" if button == Button.left else "right"
-        event = asdict(MouseClickEvent(
-            button=button_name,
-            pressed=pressed,
-            x=x,
-            y=y
-        ))
-        recorder.add_event(event)
+        try:
+            button_name = "left" if button == Button.left else "right"
+            event = asdict(MouseClickEvent(
+                button=button_name,
+                pressed=pressed,
+                x=x,
+                y=y
+            ))
+            recorder.add_event(event)
+        except Exception as e:
+            print(f"ERROR in mouse on_click: {e}")
     
     def on_scroll(x, y, dx, dy):
         """Called when mouse wheel is scrolled"""
-        event = asdict(MouseScrollEvent(x=x, y=y, dx=dx, dy=dy))
-        recorder.add_event(event)
+        try:
+            event = asdict(MouseScrollEvent(x=x, y=y, dx=dx, dy=dy))
+            recorder.add_event(event)
+        except Exception as e:
+            print(f"ERROR in mouse on_scroll: {e}")
     
     # Create and return the mouse listener
     listener = MouseListener(
@@ -196,34 +207,50 @@ def create_keyboard_listener():
     
     def on_press(key):
         """Called when a key is pressed"""
+        global is_playing
         try:
             # Try to get the character value
-            key_str = key.char if hasattr(key, 'char') else str(key)
-        except AttributeError:
-            # Special keys (Shift, Ctrl, etc.)
-            key_str = str(key).replace('Key.', '')
-        
-        event = asdict(KeyboardEvent(
-            type="key_press",
-            key=key_str
-        ))
-        recorder.add_event(event)
-        
-        # Handle recording control hotkeys
-        handle_hotkey_press(key)
+            try:
+                key_str = key.char if hasattr(key, 'char') else str(key)
+            except:
+                # Special keys (Shift, Ctrl, etc.)
+                key_str = str(key).replace('Key.', '')
+            
+            # Don't record control hotkeys (F8 and F12)
+            if key not in [Key.f8, Key.f12]:
+                event = asdict(KeyboardEvent(
+                    type="key_press",
+                    key=key_str
+                ))
+                recorder.add_event(event)
+            
+            # Handle hotkeys
+            # F12 can be pressed anytime to stop/start playback
+            # F8 only works when NOT playing
+            if key == Key.f12:
+                handle_hotkey_press(key)
+            elif key == Key.f8 and not is_playing:
+                handle_hotkey_press(key)
+        except Exception as e:
+            print(f"ERROR in keyboard on_press: {e}")
     
     def on_release(key):
         """Called when a key is released"""
         try:
-            key_str = key.char if hasattr(key, 'char') else str(key)
-        except AttributeError:
-            key_str = str(key).replace('Key.', '')
-        
-        event = asdict(KeyboardEvent(
-            type="key_release",
-            key=key_str
-        ))
-        recorder.add_event(event)
+            try:
+                key_str = key.char if hasattr(key, 'char') else str(key)
+            except:
+                key_str = str(key).replace('Key.', '')
+            
+            # Don't record control hotkeys (F8 and F12)
+            if key not in [Key.f8, Key.f12]:
+                event = asdict(KeyboardEvent(
+                    type="key_release",
+                    key=key_str
+                ))
+                recorder.add_event(event)
+        except Exception as e:
+            print(f"ERROR in keyboard on_release: {e}")
     
     # Create and return the keyboard listener
     listener = KeyboardListener(
@@ -234,7 +261,7 @@ def create_keyboard_listener():
 
 
 # ============================================================================
-# HOTKEY HANDLING (F8, F9, F10, F11)
+# HOTKEY HANDLING (F8, F12)
 # ============================================================================
 
 # GUI reference and callback for status updates
@@ -244,55 +271,59 @@ def handle_hotkey_press(key):
     """
     Handles special hotkeys for recording control.
     
-    F8 - Universal toggle (smart hotkey)
+    F8 - Record/Stop toggle
          • If not recording → start recording
          • If recording → stop recording
-         • If stopped with events → start playback
+    
+    F12 - Playback toggle
+         • If has events → start playback
          • If playing → stop playback
     """
     global gui_reference, is_playing
+    
     try:
         if key == Key.f8:
-            # F8: Universal toggle hotkey
-            if recorder.is_recording:
-                # Currently recording → STOP RECORDING
-                recorder.stop_recording()
-                if gui_reference:
-                    gui_reference.update_recording_status()
+            # F8: Record/Stop toggle (ignore during playback)
+            if is_playing:
+                return
             
-            elif is_playing:
+            try:
+                if recorder.is_recording:
+                    # Currently recording → STOP RECORDING
+                    recorder.stop_recording()
+                    if gui_reference:
+                        gui_reference.update_recording_status()
+                else:
+                    # Not recording → START RECORDING
+                    recorder.start_recording()
+                    if gui_reference:
+                        gui_reference.update_recording_status()
+            except Exception as e:
+                print(f"ERROR handling F8: {e}")
+        
+        elif key == Key.f12:
+            # F12: Stop playback if playing, or start if stopped
+            if is_playing:
                 # Currently playing → STOP PLAYBACK
                 is_playing = False
                 if gui_reference:
                     gui_reference.update_status("Stopped", "black")
                     gui_reference.update_recording_status()
-            
             elif recorder.events:
-                # Has events but not recording or playing → START PLAYBACK
+                # Not playing and have events → START PLAYBACK
                 is_playing = True
                 if gui_reference:
                     gui_reference.update_status("Playing...", "blue")
                 
                 # Start playback in background
                 def play_and_reset():
-                    global is_playing
                     playback_events(recorder.events)
-                    is_playing = False
-                    if gui_reference:
-                        gui_reference.update_status("Idle", "black")
-                        gui_reference.update_recording_status()
                 
                 thread = threading.Thread(target=play_and_reset, daemon=True)
                 thread.start()
-            
-            else:
-                # No events → START RECORDING
-                recorder.start_recording()
-                if gui_reference:
-                    gui_reference.update_recording_status()
     
-    except AttributeError:
-        pass
+    except Exception as e:
+        print(f"ERROR in handle_hotkey_press: {e}")
 
 
 # ============================================================================
@@ -418,14 +449,16 @@ def perform_event(event: dict):
             mouse_controller.scroll(event['dx'], event['dy'])
         
         elif event_type == 'key_press':
-            # Press a key
+            # Press a key (skip control hotkeys F8 and F12)
             key_str = event['key']
-            press_key(key_str)
+            if key_str.lower() not in ['f8', 'f12']:
+                press_key(key_str)
         
         elif event_type == 'key_release':
-            # Release a key
+            # Release a key (skip control hotkeys F8 and F12)
             key_str = event['key']
-            release_key(key_str)
+            if key_str.lower() not in ['f8', 'f12']:
+                release_key(key_str)
     
     except Exception as e:
         print(f"Error performing event {event_type}: {e}")
@@ -482,18 +515,9 @@ def release_key(key_str: str):
 def playback_events(events: List[dict]):
     """
     Replays recorded events with proper timing.
-    Can be stopped by setting is_playing = False (via F8 hotkey).
-    
-    Algorithm:
-    1. Get the duration of the first event (as starting point)
-    2. For each event, calculate the delay from the previous event
-    3. Sleep for that duration
-    4. Execute the event
-    5. Update the previous time
-    6. Check if is_playing flag is still True (allows F8 to stop)
-    
-    The playback_speed multiplier can speed up or slow down playback.
+    Disables keyboard listening during playback.
     """
+    
     if not events:
         print("No events to playback")
         return
@@ -501,38 +525,56 @@ def playback_events(events: List[dict]):
     def run_playback():
         global is_looping, is_playing
         
-        loop_count = 1
-        while True:
-            previous_time = 0.0
-            
-            for event in events:
-                # Check if playback was stopped via F8
-                if not is_playing:
-                    print("✓ Playback stopped by user")
-                    return
+        try:
+            loop_count = 1
+            while True:
+                previous_time = 0.0
+                event_count = 0
                 
-                # Calculate delay between this event and the previous one
-                current_time = event.get('time', 0)
-                delay = (current_time - previous_time) / playback_speed
+                for event in events:
+                    event_count += 1
+                    
+                    # Check if playback was stopped
+                    if not is_playing:
+                        return
+                    
+                    # Calculate delay between this event and the previous one
+                    current_time = event.get('time', 0)
+                    delay = (current_time - previous_time) / playback_speed
+                    
+                    # Wait for the delay, but check is_playing frequently
+                    if delay > 0:
+                        elapsed = 0
+                        while elapsed < delay and is_playing:
+                            # Sleep in 10ms chunks to be responsive to stop commands
+                            chunk = min(0.01, delay - elapsed)
+                            time.sleep(chunk)
+                            elapsed += chunk
+                    
+                    # Check again before executing event
+                    if not is_playing:
+                        return
+                    
+                    # Execute the event
+                    perform_event(event)
+                    
+                    # Update previous time
+                    previous_time = current_time
                 
-                # Wait for the delay
-                if delay > 0:
-                    time.sleep(delay)
-                
-                # Execute the event
-                perform_event(event)
-                
-                # Update previous time
-                previous_time = current_time
-            
-            if is_looping and is_playing:
-                loop_count += 1
-                print(f"Loop {loop_count}...")
-                time.sleep(0.5)
-            else:
-                break
-        
-        print("✓ Playback completed")
+                if is_looping and is_playing:
+                    loop_count += 1
+                    time.sleep(0.5)
+                else:
+                    break
+        finally:
+            # Always reset playback state when done
+            is_playing = False
+            if gui_reference:
+                try:
+                    gui_reference.update_status("Idle", "black")
+                    gui_reference.update_recording_status()
+                except:
+                    pass
     
     # Run playback in separate thread to not block
     playback_thread = threading.Thread(target=run_playback, daemon=True)
@@ -588,7 +630,7 @@ class MacroRecorderGUI:
         
         self.play_btn = ttk.Button(
             main_frame,
-            text="Play (F8)",
+            text="Play (F12)",
             command=self.on_play,
             width=12
         )
